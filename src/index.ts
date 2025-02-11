@@ -1,5 +1,50 @@
 import { Command } from 'commander';
-import { Dropbox } from 'dropbox';
+import { Dropbox, files } from 'dropbox';
+
+type ListResult = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
+
+async function checkAccount(dbx: Dropbox) {
+  await dbx.checkUser({});
+
+  const features = await dbx.rpcRequest("users/features/get_values", { features: ["paper_as_files"] }, 'user', 'api');
+  if (!features.result.values[0].paper_as_files.enabled) {
+    console.error("Paper as files feature is not enabled for this user");
+    process.exit(1);
+  }
+}
+
+function looksLikePaper(entry: ListResult): boolean {
+  if (entry['.tag'] != 'file') {
+    return false;
+  }
+  if (entry.is_downloadable) {
+    return false;
+  }
+  if (!(entry.name.endsWith('.paper') || entry.name.endsWith('.papert'))) {
+    return false;
+  }
+  if (!entry.export_info?.export_options?.includes('markdown')) {
+    return false;
+  }
+
+  return true;
+}
+
+async function* paperDocs(dbx: Dropbox): AsyncGenerator<files.FileMetadataReference> {
+  let list = await dbx.filesListFolder({ "path": "", "recursive": true });
+  while (true) {
+    for (let entry of list.result.entries) {
+      if (looksLikePaper(entry)) {
+        yield (entry as files.FileMetadataReference);
+      }
+    }
+
+    if (!list.result.has_more) {
+      break;
+    }
+    list = await dbx.filesListFolderContinue({ "cursor": list.result.cursor });
+  }
+}
 
 const program = new Command();
 program
@@ -7,26 +52,10 @@ program
   .description('Export Dropbox Paper 2020+ documents')
   .action(async (options) => {
     const dbx = new Dropbox({ accessToken: process.env.API_TOKEN });
-    await dbx.checkUser({});
+    await checkAccount(dbx);
 
-    const features = await dbx.rpcRequest("users/features/get_values", { features: ["paper_as_files"] }, 'user', 'api');
-    if (!features.result.values[0].paper_as_files.enabled) {
-      console.error("Paper as files feature is not enabled for this user");
-      process.exit(1);
-    }
-
-    let list = await dbx.filesListFolder({"path": "", "recursive": true});
-    while (true) {
-      for (let entry of list.result.entries) {
-        if (entry['.tag'] == 'file' && entry.name.endsWith('.paper')) { // TODO: better way to check? also papert
-          console.log(entry);
-        }
-      }
-
-      if (!list.result.has_more) {
-        break;
-      }
-      list = await dbx.filesListFolderContinue({"cursor": list.result.cursor});
+    for await (let doc of paperDocs(dbx)) {
+      console.log(doc);
     }
   });
 program.parse(process.argv);
