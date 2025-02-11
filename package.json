@@ -2,6 +2,8 @@
   "name": "dropbox-paper-export-2020plus",
   "module": "src/index.ts",
   "type": "module",
+  "license": " BSD-2-Clause",
+  "author": "Dave Vasilevsky <dave@vasilevsky.ca>",
   "devDependencies": {
     "@types/bun": "latest"
   },
