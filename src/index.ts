@@ -54,8 +54,12 @@ program
     const dbx = new Dropbox({ accessToken: process.env.API_TOKEN });
     await checkAccount(dbx);
 
-    for await (let doc of paperDocs(dbx)) {
-      console.log(doc);
-    }
+    // for await (let doc of paperDocs(dbx)) {
+    //   console.log(doc);
+    // }
+
+    const id = 'id:0pVIHY9IlbsAAAAAAAAPmA';
+    const response = await dbx.filesExport({ path: id, export_format: 'markdown' });
+    console.log(response.result.fileBinary.toString());
   });
 program.parse(process.argv);
