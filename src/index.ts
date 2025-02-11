@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { Dropbox, files } from 'dropbox';
+import { Dropbox, type files } from 'dropbox';
 
 type ListResult = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
 
