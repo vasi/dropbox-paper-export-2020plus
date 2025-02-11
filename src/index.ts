@@ -1,5 +1,8 @@
 import { Command } from 'commander';
 import { Dropbox, type files } from 'dropbox';
+import PQueue from 'p-queue';
+import path from 'path';
+import fs from 'fs';
 
 type ListResult = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
 
@@ -26,12 +29,11 @@ function looksLikePaper(entry: ListResult): boolean {
   if (!entry.export_info?.export_options?.includes('markdown')) {
     return false;
   }
-
   return true;
 }
 
 async function* paperDocs(dbx: Dropbox): AsyncGenerator<files.FileMetadataReference> {
-  let list = await dbx.filesListFolder({ "path": "", "recursive": true, "limit": 1000 });
+  let list = await dbx.filesListFolder({ "path": "", "recursive": true, "limit": 100 });
   while (true) {
     for (let entry of list.result.entries) {
       if (looksLikePaper(entry)) {
@@ -46,20 +48,37 @@ async function* paperDocs(dbx: Dropbox): AsyncGenerator<files.FileMetadataRefere
   }
 }
 
+async function exportDoc(output: string, dbx: Dropbox, doc: files.FileMetadataReference) {
+  const formats = {
+    'markdown': '.md',
+    'html': '.html',
+  }
+
+  const relative: string = doc.path_display!.replace(/^\//g, '');
+  console.log("Exporting", relative);
+  const file = path.join(output, relative);
+  const dir = path.dirname(file);
+
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [format, ext] of Object.entries(formats)) {
+    const response = await dbx.filesExport({ path: doc.id, export_format: format });
+    fs.writeFileSync(file + ext, response.result.fileBinary);
+  }
+}
+
 const program = new Command();
 program
   .version('1.0.0')
   .description('Export Dropbox Paper 2020+ documents')
-  .action(async (options) => {
+  .arguments('<output>')
+  .action(async (output, options) => {
     const dbx = new Dropbox({ accessToken: process.env.API_TOKEN });
     await checkAccount(dbx);
 
+    const pq = new PQueue({ concurrency: 32 });
     for await (let doc of paperDocs(dbx)) {
-      console.log(doc);
+      pq.add(async () => await exportDoc(output, dbx, doc));
     }
-
-    // const id = 'id:0pVIHY9IlbsAAAAAAAAPmA';
-    // const response = await dbx.filesExport({ path: id, export_format: 'markdown' });
-    // console.log(response.result.fileBinary.toString());
+    await pq.onIdle();
   });
 program.parse(process.argv);

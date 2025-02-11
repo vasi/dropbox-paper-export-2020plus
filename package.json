@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "commander": "^13.1.0",
-    "dropbox": "^10.34.0"
+    "dropbox": "^10.34.0",
+    "p-queue": "^8.1.0"
   }
 }
