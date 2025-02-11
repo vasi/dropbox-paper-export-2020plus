@@ -1,19 +1,12 @@
 {
   "name": "dropbox-paper-export-2020plus",
-  "version": "1.0.0",
-  "main": "src/index.ts",
-  "scripts": {
-    "start": "bun src/index.ts"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "Export Dropbox Paper docs with the new 2020 API",
+  "module": "src/index.ts",
+  "type": "module",
   "devDependencies": {
-    "@types/node": "^22.13.1",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.7.3",
     "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
   },
   "dependencies": {
     "commander": "^13.1.0",
