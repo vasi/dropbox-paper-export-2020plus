@@ -5,18 +5,19 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "nodemon --watch 'src/**/*.ts' --exec ts-node src/index.ts"
+    "dev": "tsc --watch"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "Export Dropbox Paper docs with the new 2020 API",
   "devDependencies": {
-    "nodemon": "^3.1.9",
+    "@types/node": "^22.13.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "dropbox": "^10.34.0"
   }
 }
