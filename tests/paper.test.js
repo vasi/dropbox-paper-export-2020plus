@@ -1,4 +1,4 @@
-import { looksLikePaper } from '../src/paper.ts';
+import { looksLikePaper } from '../src/paper';
 import { describe, it, expect } from "bun:test";
 
 describe('looksLikePaper', () => {
