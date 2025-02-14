@@ -1,7 +1,10 @@
-import { Dropbox, type files } from 'dropbox';
+import { Dropbox, DropboxAuth, type DropboxAuthOptions, type DropboxOptions, type files } from 'dropbox';
 import PQueue from 'p-queue';
-import path from 'path';
+import open from 'open';
+import path, { resolve } from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
+import http from 'http';
 
 type ListResult = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
 
@@ -65,11 +68,68 @@ async function exportDoc(output: string, dbx: Dropbox, doc: files.FileMetadataRe
   }
 }
 
+async function login(dbx: Dropbox, auth: DropboxAuth) {
+  const port = 31727;
+  const redirectUri = `http://localhost:${port}`;
+
+  const state = crypto.randomBytes(16).toString('hex');
+  const authUrl = await auth.getAuthenticationUrl(redirectUri, state, 'code', 'offline', [], 'none', true);
+
+  const ready = new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => reject("Timeout"), 120_000);
+    const server = http.createServer(async (req, res) => {
+      clearTimeout(timeout);
+      const url = new URL(req.url!, redirectUri);
+      const code = url.searchParams.get('code')!;
+      const stateParam = url.searchParams.get('state');
+      if (state !== stateParam) {
+        res.end("Invalid state");
+        reject("Invalid state");
+        return;
+      }
+
+      try {
+        const token = await auth.getAccessTokenFromCode(redirectUri, code);
+        res.end("Authenticated, you can close this tab now");
+        server.close();
+        resolve((token.result as any).refresh_token);
+      } catch (e) {
+        reject(e);
+      }
+    });
+    server.listen(port, 'localhost');
+  });
+
+  open(authUrl.toString());
+  const newRefreshToken = await ready;
+  console.log("Refresh token:", newRefreshToken);
+  auth.setRefreshToken(newRefreshToken);
+}
+
+async function getDropbox(): Promise<Dropbox> {
+  const options: DropboxAuthOptions = { clientId: '5190eemvdo23cgj' };
+  const refreshToken = process.env.REFRESH_TOKEN;
+  if (refreshToken) {
+    options.refreshToken = refreshToken;
+  }
+
+  const auth = new DropboxAuth(options);
+  const dbx = new Dropbox({ auth });
+
+  if (auth.getRefreshToken()) {
+    auth.checkAndRefreshAccessToken();
+  } else {
+    await login(dbx, auth);
+  }
+  return dbx
+}
+
 export async function exportAll(output: string) {
-  const dbx = new Dropbox({ accessToken: process.env.API_TOKEN });
+  const dbx = await getDropbox();
   await checkAccount(dbx);
 
   const pq = new PQueue({ concurrency: 16 });
+  console.log('Starting list...');
   for await (let doc of paperDocs(dbx)) {
     pq.add(async () => await exportDoc(output, dbx, doc));
   }
