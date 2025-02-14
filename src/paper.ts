@@ -1,10 +1,11 @@
 import { Dropbox, DropboxAuth, type DropboxAuthOptions, type DropboxOptions, type files } from 'dropbox';
-import PQueue from 'p-queue';
 import open from 'open';
 import path, { resolve } from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import http from 'http';
+
+import Limiter from './limiter';
 
 type ListResult = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
 
@@ -34,37 +35,40 @@ export function looksLikePaper(entry: ListResult): boolean {
   return true;
 }
 
-async function* paperDocs(dbx: Dropbox): AsyncGenerator<files.FileMetadataReference> {
-  let list = await dbx.filesListFolder({ "path": "", "recursive": true, "limit": 100 });
+async function* paperDocs(dbx: Dropbox, limiter: Limiter): AsyncGenerator<files.FileMetadataReference> {
+  let list = await limiter.runHi(() => dbx.filesListFolder({ "path": "", "recursive": true, "limit": 1000 }));
   while (true) {
-    for (let entry of list.result.entries) {
+    for (let entry of list.entries) {
       if (looksLikePaper(entry)) {
         yield (entry as files.FileMetadataReference);
       }
     }
 
-    if (!list.result.has_more) {
+    if (!list.has_more) {
       break;
     }
-    list = await dbx.filesListFolderContinue({ "cursor": list.result.cursor });
+    list = await limiter.runHi(() => dbx.filesListFolderContinue({ "cursor": list.cursor }));
   }
 }
 
-async function exportDoc(output: string, dbx: Dropbox, doc: files.FileMetadataReference) {
+function exportDoc(output: string, dbx: Dropbox, limiter: Limiter, doc: files.FileMetadataReference) {
   const formats = {
     'markdown': '.md',
     'html': '.html',
   }
 
   const relative: string = doc.path_display!.replace(/^\//g, '');
-  console.log("Exporting", relative);
   const file = path.join(output, relative);
   const dir = path.dirname(file);
 
-  fs.mkdirSync(dir, { recursive: true });
   for (const [format, ext] of Object.entries(formats)) {
-    const response = await dbx.filesExport({ path: doc.id, export_format: format });
-    fs.writeFileSync(file + ext, response.result.fileBinary);
+    limiter.run(async () => {
+      const response = await dbx.filesExport({ path: doc.id, export_format: format });
+      console.log("Exporting", relative, "as", format);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file + ext, response.result.fileBinary);
+      return response;
+    });
   }
 }
 
@@ -128,10 +132,12 @@ export async function exportAll(output: string) {
   const dbx = await getDropbox();
   await checkAccount(dbx);
 
-  const pq = new PQueue({ concurrency: 16 });
+  const limiter = new Limiter();
+
   console.log('Starting list...');
-  for await (let doc of paperDocs(dbx)) {
-    pq.add(async () => await exportDoc(output, dbx, doc));
+  for await (let doc of paperDocs(dbx, limiter)) {
+    exportDoc(output, dbx, limiter, doc);
   }
-  await pq.onIdle();
+
+  await limiter.wait();
 }
