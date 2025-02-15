@@ -1,4 +1,4 @@
-import { looksLikePaper } from '../src/paper';
+import Exporter from '../src/exporter';
 import { describe, it, expect } from "bun:test";
 
 describe('looksLikePaper', () => {
@@ -9,6 +9,6 @@ describe('looksLikePaper', () => {
       name: 'foo.paper',
       export_info: { export_options: ['markdown'] }
     };
-    expect(looksLikePaper(entry)).toBe(true);
+    expect(Exporter.looksLikePaper(entry)).toBe(true);
   });
 });
