@@ -1,6 +1,7 @@
 import { Dropbox, DropboxAuth, type DropboxAuthOptions } from "dropbox";
 import crypto from 'crypto';
 import http from 'http';
+import open from 'open';
 
 async function login(dbx: Dropbox, auth: DropboxAuth) {
   const port = 31727;
