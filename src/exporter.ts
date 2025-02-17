@@ -92,5 +92,6 @@ export default class Exporter {
     for await (let doc of this.#listPaperDocs()) {
       this.#exportDoc(doc);
     }
+    await this.#limiter.wait();
   }
 }
