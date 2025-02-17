@@ -8,7 +8,7 @@ async function login(dbx: Dropbox) {
   const redirectUri = `http://localhost:${port}`;
 
   const state = crypto.randomBytes(16).toString('hex');
-  const authUrl = await auth.getAuthenticationUrl(redirectUri, state, 'code', 'offline',
+  const authUrl = await dbx.auth.getAuthenticationUrl(redirectUri, state, 'code', 'offline',
     [], 'none', true);
 
   const ready = new Promise<string>((resolve, reject) => {
