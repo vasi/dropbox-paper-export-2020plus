@@ -1,13 +1,14 @@
 import { Dropbox, DropboxAuth, type DropboxAuthOptions, type DropboxOptions, type files } from 'dropbox';
-import path, { resolve } from 'path';
+import path from 'path';
 import fs from 'fs';
+import getDropbox from './login';
 
 import Limiter from './limiter';
+import type State from './state';
 
 type ListResult = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
 
 interface ExporterOptions {
-  dbx: Dropbox;
   output: string;
   verbose?: boolean;
 }
@@ -17,11 +18,29 @@ export default class Exporter {
   #output: string;
   #limiter: Limiter;
   #verbose: boolean = false;
+  #state: State;
 
   #list?: files.ListFolderResult;
 
-  constructor(opts: ExporterOptions) {
-    this.#dbx = opts.dbx;
+  static async create(opts: ExporterOptions): Promise<Exporter> {
+    const state = Exporter.#readState(opts.output);
+    const dbx = await getDropbox(state.refreshToken);
+    state.refreshToken = dbx.auth.getRefreshToken();
+    return Promise.resolve(new Exporter(dbx, state, opts));
+  }
+
+  static #readState(output: string): State {
+    const file = path.resolve(output, 'state.json');
+    if (fs.existsSync(file)) {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } else {
+      return { docs: new Map() }
+    }
+  }
+
+  private constructor(dbx: Dropbox, state: State, opts: ExporterOptions) {
+    this.#dbx = dbx;
+    this.#state = state;
     this.#output = opts.output;
     this.#verbose = opts.verbose || false;
     this.#limiter = new Limiter();
@@ -33,7 +52,7 @@ export default class Exporter {
     }
   }
 
-  async *#listPaperDocs(): AsyncGenerator<files.FileMetadataReference> {
+  async * #listPaperDocs(): AsyncGenerator<files.FileMetadataReference> {
     this.#log('Starting list...');
     this.#list = await this.#limiter.runHi(() => this.#dbx.filesListFolder({ "path": "", "recursive": true, "limit": 1000 }));
     while (true) {
@@ -74,7 +93,7 @@ export default class Exporter {
     }
 
     const relative: string = doc.path_display!.replace(/^\//g, '');
-    const file = path.join(this.#output, relative);
+    const file = path.resolve(this.#output, relative);
     const dir = path.dirname(file);
 
     for (const [format, ext] of Object.entries(formats)) {
@@ -93,5 +112,8 @@ export default class Exporter {
       this.#exportDoc(doc);
     }
     await this.#limiter.wait();
+
+    let stateFile = path.resolve(this.#output, 'state.json');
+    fs.writeFileSync(stateFile, JSON.stringify(this.#state, null, 2));
   }
 }
