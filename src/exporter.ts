@@ -19,6 +19,7 @@ interface ExporterOptions {
   output: string;
   verbose?: boolean;
   clientId?: string;
+  redirectPort?: number;
 }
 
 export default class Exporter {

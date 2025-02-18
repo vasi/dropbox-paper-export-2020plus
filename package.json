@@ -4,6 +4,11 @@
   "type": "module",
   "license": " BSD-2-Clause",
   "author": "Dave Vasilevsky <dave@vasilevsky.ca>",
+  "scripts": {
+    "run": "bun src/index.js -v ../paper",
+    "check": "tsc --noEmit",
+    "test": "bun test tests"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
