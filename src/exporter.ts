@@ -71,7 +71,6 @@ export default class Exporter {
   private constructor(dbx: Dropbox, inputState: State, opts: ExporterOptions) {
     this.#dbx = dbx;
     this.#inputState = inputState;
-    this.#cursor = this.#inputState.cursor;
 
     this.#output = opts.output;
     this.#verbose = opts.verbose || false;
@@ -85,15 +84,29 @@ export default class Exporter {
     }
 
     this.#limiter = new Limiter();
-    this.#outputState = { refreshToken: dbx.auth.getRefreshToken(), docs: {} };
-
     this.#tmp = path.join(this.#output, tempName);
     fs.rmSync(this.#tmp, { force: true, recursive: true });
     fs.mkdirSync(this.#tmp, { recursive: true });
     this.#stateFile = path.join(this.#output, stateName);
 
+    if (this.#inputState.cursor) {
+      this.#cursor = this.#inputState.cursor;
+      this.#outputState = this.#inputState;
+      this.#setupInitialIds();
+    } else {
+      this.#outputState = { refreshToken: dbx.auth.getRefreshToken(), docs: {} };
+    }
+
     for (let [id, docState] of Object.entries(this.#inputState.docs)) {
       this.#pathMap.set(docState.path, id);
+    }
+  }
+
+  #setupInitialIds() {
+    for (let [id, docState] of Object.entries(this.#inputState.docs)) {
+      for (let ext of this.#formats) {
+        this.#tryExistingFile(id, docState.rev, ext);
+      }
     }
   }
 
@@ -166,15 +179,14 @@ export default class Exporter {
     this.#outputState.docs[doc.id] = docState;
 
     for (let ext of this.#formats) {
-      const out = path.join(this.#tmp, doc.id + '.' + ext);
-      this.#exportTo(doc, docState, ext, out);
+      this.#exportTo(doc, docState, ext);
     }
   }
 
   // Return true if we did use an existing file
-  #tryExistingFile(doc: files.FileMetadataReference, docState: DocState, ext: string, out: string): boolean {
-    const have = this.#inputState.docs[doc.id];
-    if (!have || have.rev !== doc.rev) {
+  #tryExistingFile(id: string, rev: string, ext: string, outDocState?: DocState): boolean {
+    const have = this.#inputState.docs[id];
+    if (!have || have.rev !== rev) {
       return false;
     }
 
@@ -189,25 +201,30 @@ export default class Exporter {
       return false;
     }
 
-    docState.hashes[ext] = hash;
+    if (outDocState) {
+      outDocState.hashes[ext] = hash;
+    }
+    const out = path.join(this.#tmp, id + '.' + ext);
     fs.copyFileSync(file, out);
     return true;
   }
 
-  #exportTo(doc: files.FileMetadataReference, docState: DocState, ext: string, out: string) {
+  #exportTo(doc: files.FileMetadataReference, outDocState: DocState, ext: string) {
     // Maybe we already have the file?
-    if (this.#tryExistingFile(doc, docState, ext, out)) {
+    if (this.#tryExistingFile(doc.id, doc.rev, ext, outDocState)) {
       return;
     }
 
     const format = Formats[ext];
     this.#limiter.run(async () => {
       const response = await this.#dbx.filesExport({ path: doc.id, export_format: format });
-      this.#log("Exporting", docState.path, "as", format);
+      this.#log("Exporting", outDocState.path, "as", format);
 
       const contents = response.result.fileBinary.toString();
       const hash = Exporter.#hash(contents);
-      docState.hashes[ext] = hash;
+
+      outDocState.hashes[ext] = hash;
+      const out = path.join(this.#tmp, doc.id + '.' + ext);
       fs.writeFileSync(out, response.result.fileBinary);
       return response;
     });
