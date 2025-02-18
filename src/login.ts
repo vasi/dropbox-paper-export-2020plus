@@ -3,8 +3,10 @@ import crypto from 'crypto';
 import http from 'http';
 import open from 'open';
 
+export const defaultRedirectPort = 31727
+
 async function login(dbx: Dropbox, port?: number) {
-  port = port ?? 31727;
+  port = port ?? defaultRedirectPort;
   const redirectUri = `http://localhost:${port}`;
 
   const state = crypto.randomBytes(16).toString('hex');

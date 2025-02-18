@@ -8,7 +8,7 @@ import getDropbox from './login';
 import Limiter from './limiter';
 import { type DocState, type State } from './state';
 
-const Formats = {
+const Formats: Record<string, string> = {
   "md": "markdown",
   "html": "html",
 }
@@ -20,15 +20,18 @@ interface ExporterOptions {
   verbose?: boolean;
   clientId?: string;
   redirectPort?: number;
+  formats?: string[],
 }
 
 export default class Exporter {
   #dbx: Dropbox;
   #output: string;
-  #limiter: Limiter;
   #verbose: boolean = false;
+  #formats: string[] = Object.keys(Formats);
+
   #inputState: State;
   #outputState: State;
+  #limiter: Limiter;
 
   #list?: files.ListFolderResult;
 
@@ -61,6 +64,14 @@ export default class Exporter {
 
     this.#output = opts.output;
     this.#verbose = opts.verbose || false;
+
+    // Validate formats
+    this.#formats = opts.formats ?? Object.keys(Formats);
+    for (let format of this.#formats) {
+      if (!(format in Formats)) {
+        throw new Error(`Unknown format: ${format}`);
+      }
+    }
 
     this.#limiter = new Limiter();
     this.#outputState = { refreshToken: dbx.auth.getRefreshToken(), docs: {} };
@@ -116,7 +127,8 @@ export default class Exporter {
     const file = path.resolve(this.#output, relative);
     const dir = path.dirname(file);
 
-    for (const [ext, format] of Object.entries(Formats)) {
+    for (let ext of this.#formats) {
+      const format = Formats[ext];
       this.#limiter.run(async () => {
         const response = await this.#dbx.filesExport({ path: doc.id, export_format: format });
         this.#log("Exporting", relative, "as", format);
@@ -126,7 +138,7 @@ export default class Exporter {
         docState.hashes[format] = hash;
 
         fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(file + ext, response.result.fileBinary);
+        fs.writeFileSync(file + '.' + ext, response.result.fileBinary);
         return response;
       });
     }
