@@ -23,6 +23,9 @@ interface ExporterOptions {
   formats?: string[],
 }
 
+const tempName = '.tmp';
+const stateName = "state.json";
+
 export default class Exporter {
   #dbx: Dropbox;
   #output: string;
@@ -32,6 +35,8 @@ export default class Exporter {
   #inputState: State;
   #outputState: State;
   #limiter: Limiter;
+  #tmp: string;
+  #stateFile: string;
 
   #cursor?: string;
 
@@ -46,7 +51,7 @@ export default class Exporter {
   }
 
   static #readState(output: string): State {
-    const file = path.resolve(output, 'state.json');
+    const file = path.join(output, stateName);
     if (fs.existsSync(file)) {
       return JSON.parse(fs.readFileSync(file, 'utf8'));
     } else {
@@ -75,6 +80,11 @@ export default class Exporter {
 
     this.#limiter = new Limiter();
     this.#outputState = { refreshToken: dbx.auth.getRefreshToken(), docs: {} };
+
+    this.#tmp = path.join(this.#output, tempName);
+    fs.rmSync(this.#tmp, { force: true, recursive: true });
+    fs.mkdirSync(this.#tmp, { recursive: true });
+    this.#stateFile = path.join(this.#output, stateName);
   }
 
   #log(...params: any[]) {
@@ -126,9 +136,6 @@ export default class Exporter {
     const docState: DocState = { path: relative, rev: doc.rev, hashes: {} };
     this.#outputState.docs[doc.id] = docState;
 
-    const file = path.resolve(this.#output, relative);
-    const dir = path.dirname(file);
-
     for (let ext of this.#formats) {
       const format = Formats[ext];
       this.#limiter.run(async () => {
@@ -139,18 +146,56 @@ export default class Exporter {
         const hash = Exporter.#hash(contents);
         docState.hashes[format] = hash;
 
-        fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(file + '.' + ext, response.result.fileBinary);
+        const file = path.join(this.#tmp, doc.id + '.' + ext);
+        fs.writeFileSync(file, response.result.fileBinary);
         return response;
       });
     }
   }
 
+  // Return valid paths
+  #emplaceDocs(): Set<string> {
+    const validDocs = new Set<string>();
+    validDocs.add(stateName);
+
+    for (let [id, doc] of Object.entries(this.#outputState.docs)) {
+      for (let ext of this.#formats) {
+        const source = path.join(this.#tmp, id + '.' + ext);
+        const file = doc.path + '.' + ext;
+
+        // Add doc and all parents as valid paths
+        validDocs.add(file);
+        let valid = file;
+        while (true) {
+          valid = path.dirname(valid);
+          if (valid === '.')
+            break;
+          validDocs.add(valid);
+        }
+
+        const dest = path.join(this.#output, file);
+        const destDir = path.dirname(dest);
+        fs.mkdirSync(destDir, { recursive: true });
+        fs.copyFileSync(source, dest);
+      }
+    }
+    return validDocs;
+  }
+
+  #cleanup(valid: Set<string>) {
+    const files = fs.readdirSync(this.#output, { recursive: true }) as string[];
+    for (let file of files) {
+      if (!valid.has(file)) {
+        const abs = path.join(this.#output, file);
+        fs.rmSync(abs, { force: true, recursive: true });
+      }
+    }
+  }
+
   #writeState() {
     this.#outputState.cursor = this.#cursor;
-    let stateFile = path.resolve(this.#output, 'state.json');
     fs.mkdirSync(this.#output, { recursive: true });
-    fs.writeFileSync(stateFile, JSON.stringify(this.#outputState, null, 2));
+    fs.writeFileSync(this.#stateFile, JSON.stringify(this.#outputState, null, 2));
   }
 
   async run() {
@@ -158,6 +203,9 @@ export default class Exporter {
       this.#exportDoc(doc);
     }
     await this.#limiter.wait();
+    this.#log("Emplacing files and cleaning up");
+    const valid = this.#emplaceDocs();
     this.#writeState();
+    this.#cleanup(valid);
   }
 }
