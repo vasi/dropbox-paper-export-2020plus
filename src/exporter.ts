@@ -33,6 +33,7 @@ export default class Exporter {
   #formats: string[] = Object.keys(Formats);
 
   #inputState: State;
+  #pathMap: Map<string, string> = new Map(); // relative path to id
   #outputState: State;
   #limiter: Limiter;
   #tmp: string;
@@ -63,9 +64,14 @@ export default class Exporter {
     return crypto.createHash('sha3-512').update(data).digest('base64');
   }
 
+  static #relative(path: string): string {
+    return path.replace(/^\//g, '');
+  }
+
   private constructor(dbx: Dropbox, inputState: State, opts: ExporterOptions) {
     this.#dbx = dbx;
     this.#inputState = inputState;
+    this.#cursor = this.#inputState.cursor;
 
     this.#output = opts.output;
     this.#verbose = opts.verbose || false;
@@ -85,6 +91,10 @@ export default class Exporter {
     fs.rmSync(this.#tmp, { force: true, recursive: true });
     fs.mkdirSync(this.#tmp, { recursive: true });
     this.#stateFile = path.join(this.#output, stateName);
+
+    for (let [id, docState] of Object.entries(this.#inputState.docs)) {
+      this.#pathMap.set(docState.path, id);
+    }
   }
 
   #log(...params: any[]) {
@@ -93,15 +103,26 @@ export default class Exporter {
     }
   }
 
+  async #initialList(): Promise<files.ListFolderResult> {
+    if (this.#cursor) {
+      return await this.#limiter.runHi(() =>
+        this.#dbx.filesListFolderContinue({ cursor: this.#cursor! }));
+    } else {
+      return await this.#limiter.runHi(() =>
+        this.#dbx.filesListFolder({ path: "", recursive: true, limit: 1000 }));
+    }
+  }
+
   async #listAndDispatch() {
     this.#log('Starting list...');
-    let list = await this.#limiter.runHi(() =>
-      this.#dbx.filesListFolder({ path: "", recursive: true, limit: 1000 }));
+    let list = await this.#initialList();
     this.#cursor = list.cursor;
     while (true) {
       for (let entry of list.entries) {
         if (Exporter.looksLikePaper(entry)) {
           this.#exportDoc(entry as files.FileMetadataReference);
+        } else if (entry['.tag'] == 'deleted') {
+          this.#processDelete(entry as files.DeletedMetadataReference);
         }
       }
 
@@ -131,8 +152,16 @@ export default class Exporter {
     return true;
   }
 
+  #processDelete(doc: files.DeletedMetadataReference) {
+    const relative = Exporter.#relative(doc.path_display!);
+    const id = this.#pathMap.get(relative);
+    if (id) {
+      delete this.#outputState.docs[id];
+    }
+  }
+
   #exportDoc(doc: files.FileMetadataReference) {
-    const relative: string = doc.path_display!.replace(/^\//g, '');
+    const relative: string = Exporter.#relative(doc.path_display!);
     const docState: DocState = { path: relative, rev: doc.rev, hashes: {} };
     this.#outputState.docs[doc.id] = docState;
 
