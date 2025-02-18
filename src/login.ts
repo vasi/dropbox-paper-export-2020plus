@@ -3,8 +3,8 @@ import crypto from 'crypto';
 import http from 'http';
 import open from 'open';
 
-async function login(dbx: Dropbox) {
-  const port = 31727;
+async function login(dbx: Dropbox, port?: number) {
+  port = port ?? 31727;
   const redirectUri = `http://localhost:${port}`;
 
   const state = crypto.randomBytes(16).toString('hex');
@@ -52,12 +52,18 @@ async function checkPaperSupport(dbx: Dropbox) {
   }
 }
 
-export default async function getDropbox(refreshToken?: string): Promise<Dropbox> {
-  const options: DropboxAuthOptions = { clientId: '5190eemvdo23cgj' };
-  if (refreshToken) {
-    options.refreshToken = refreshToken;
-  }
+interface AuthOpts {
+  clientId?: string,
+  refreshToken?: string,
+  redirectPort?: number,
+}
 
+export default async function getDropbox(opts: AuthOpts): Promise<Dropbox> {
+  const options: DropboxAuthOptions = {
+    clientId: opts.clientId ?? '5190eemvdo23cgj',
+    ...(opts.refreshToken && { refreshToken: opts.refreshToken }),
+    ...(opts.redirectPort && { redirectPort: opts.redirectPort }),
+  };
   const auth = new DropboxAuth(options);
   const dbx = new Dropbox({ auth });
 

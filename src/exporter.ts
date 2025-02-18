@@ -8,11 +8,17 @@ import getDropbox from './login';
 import Limiter from './limiter';
 import { type DocState, type State } from './state';
 
+const Formats = {
+  "md": "markdown",
+  "html": "html",
+}
+
 type ListResult = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
 
 interface ExporterOptions {
   output: string;
   verbose?: boolean;
+  clientId?: string;
 }
 
 export default class Exporter {
@@ -27,7 +33,11 @@ export default class Exporter {
 
   static async create(opts: ExporterOptions): Promise<Exporter> {
     const inputState = Exporter.#readState(opts.output);
-    const dbx = await getDropbox(inputState.refreshToken);
+    const dbx = await getDropbox({
+      refreshToken: inputState.refreshToken,
+      clientId: opts.clientId,
+      redirectPort: opts.redirectPort,
+    });
     return Promise.resolve(new Exporter(dbx, inputState, opts));
   }
 
@@ -63,7 +73,8 @@ export default class Exporter {
 
   async * #listPaperDocs(): AsyncGenerator<files.FileMetadataReference> {
     this.#log('Starting list...');
-    this.#list = await this.#limiter.runHi(() => this.#dbx.filesListFolder({ "path": "", "recursive": true, "limit": 1000 }));
+    this.#list = await this.#limiter.runHi(() =>
+      this.#dbx.filesListFolder({ "path": "", "recursive": true, "limit": 1000 }));
     while (true) {
       for (let entry of this.#list.entries) {
         if (Exporter.looksLikePaper(entry)) {
@@ -74,7 +85,8 @@ export default class Exporter {
       if (!this.#list.has_more) {
         break;
       }
-      this.#list = await this.#limiter.runHi(() => this.#dbx.filesListFolderContinue({ "cursor": this.#list!.cursor }));
+      this.#list = await this.#limiter.runHi(() =>
+        this.#dbx.filesListFolderContinue({ "cursor": this.#list!.cursor }));
     }
   }
 
@@ -96,11 +108,6 @@ export default class Exporter {
   }
 
   #exportDoc(doc: files.FileMetadataReference) {
-    const formats = {
-      'markdown': '.md',
-      'html': '.html',
-    }
-
     const relative: string = doc.path_display!.replace(/^\//g, '');
     const docState: DocState = { path: relative, rev: doc.rev, hashes: {} };
     this.#outputState.docs[doc.id] = docState;
@@ -108,7 +115,7 @@ export default class Exporter {
     const file = path.resolve(this.#output, relative);
     const dir = path.dirname(file);
 
-    for (const [format, ext] of Object.entries(formats)) {
+    for (const [ext, format] of Object.entries(Formats)) {
       this.#limiter.run(async () => {
         const response = await this.#dbx.filesExport({ path: doc.id, export_format: format });
         this.#log("Exporting", relative, "as", format);
