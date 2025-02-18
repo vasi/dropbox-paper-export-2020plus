@@ -15,9 +15,7 @@ export default class Limiter {
   #completeResolve?: () => void;
 
   constructor() {
-    this.#complete = new Promise<void>((resolve) => {
-      this.#completeResolve = resolve;
-    });
+    this.#notifyComplete(); // setup completion notification
   }
 
   #setWait(wait: number) {
@@ -71,6 +69,15 @@ export default class Limiter {
     return this.#doRun(f, x => this.#queue.unshift(x));
   }
 
+  #notifyComplete() {
+    if (this.#completeResolve) {
+      this.#completeResolve!();
+    }
+    this.#complete = new Promise<void>((resolve) => {
+      this.#completeResolve = resolve;
+    });
+  }
+
   async #doRun<T>(f: Thunk<T>, addFn: (_: any) => void): Promise<T> {
     const p = new Promise<T>((resolve, reject) => {
       const doRun = async () => {
@@ -84,7 +91,7 @@ export default class Limiter {
 
           // Maybe we're totally done?
           if (this.#queue.length === 0 && this.#inflight === 0) {
-            this.#completeResolve!();
+            this.#notifyComplete();
           }
 
         } catch (e) {

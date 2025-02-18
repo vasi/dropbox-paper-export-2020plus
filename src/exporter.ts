@@ -126,15 +126,18 @@ export default class Exporter {
     }
   }
 
+  #writeState() {
+    this.#outputState.cursor = this.#list?.cursor;
+    let stateFile = path.resolve(this.#output, 'state.json');
+    fs.mkdirSync(this.#output, { recursive: true });
+    fs.writeFileSync(stateFile, JSON.stringify(this.#outputState, null, 2));
+  }
+
   async run() {
     for await (let doc of this.#listPaperDocs()) {
       this.#exportDoc(doc);
     }
     await this.#limiter.wait();
-
-    this.#outputState.cursor = this.#list?.cursor;
-    fs.mkdirSync(this.#output, { recursive: true }); // TODO: fix wait
-    let stateFile = path.resolve(this.#output, 'state.json');
-    fs.writeFileSync(stateFile, JSON.stringify(this.#outputState, null, 2));
+    this.#writeState();
   }
 }
