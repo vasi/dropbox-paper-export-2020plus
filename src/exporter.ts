@@ -36,7 +36,7 @@ export default class Exporter {
   #pathMap: Map<string, string> = new Map(); // relative path to id
   #outputState: State;
   #limiter: Limiter;
-  #tmp: string;
+  #tmpdir: string;
   #stateFile: string;
 
   #cursor?: string;
@@ -84,9 +84,9 @@ export default class Exporter {
     }
 
     this.#limiter = new Limiter();
-    this.#tmp = path.join(this.#output, tempName);
-    fs.rmSync(this.#tmp, { force: true, recursive: true });
-    fs.mkdirSync(this.#tmp, { recursive: true });
+    this.#tmpdir = path.join(this.#output, tempName);
+    fs.rmSync(this.#tmpdir, { force: true, recursive: true });
+    fs.mkdirSync(this.#tmpdir, { recursive: true });
     this.#stateFile = path.join(this.#output, stateName);
 
     if (this.#inputState.cursor) {
@@ -132,10 +132,11 @@ export default class Exporter {
     this.#cursor = list.cursor;
     while (true) {
       for (let entry of list.entries) {
+        console.dir(entry);
         if (Exporter.looksLikePaper(entry)) {
-          this.#exportDoc(entry as files.FileMetadataReference);
+          // this.#exportDoc(entry as files.FileMetadataReference);
         } else if (entry['.tag'] == 'deleted') {
-          this.#processDelete(entry as files.DeletedMetadataReference);
+          // this.#processDelete(entry as files.DeletedMetadataReference);
         }
       }
 
@@ -204,7 +205,7 @@ export default class Exporter {
     if (outDocState) {
       outDocState.hashes[ext] = hash;
     }
-    const out = path.join(this.#tmp, id + '.' + ext);
+    const out = path.join(this.#tmpdir, id + '.' + ext);
     fs.copyFileSync(file, out);
     return true;
   }
@@ -224,7 +225,7 @@ export default class Exporter {
       const hash = Exporter.#hash(contents);
 
       outDocState.hashes[ext] = hash;
-      const out = path.join(this.#tmp, doc.id + '.' + ext);
+      const out = path.join(this.#tmpdir, doc.id + '.' + ext);
       fs.writeFileSync(out, response.result.fileBinary);
       return response;
     });
@@ -237,7 +238,7 @@ export default class Exporter {
 
     for (let [id, doc] of Object.entries(this.#outputState.docs)) {
       for (let ext of this.#formats) {
-        const source = path.join(this.#tmp, id + '.' + ext);
+        const source = path.join(this.#tmpdir, id + '.' + ext);
         const file = doc.path + '.' + ext;
 
         // Add doc and all parents as valid paths
@@ -278,9 +279,9 @@ export default class Exporter {
   async run() {
     await this.#listAndDispatch();
     await this.#limiter.wait();
-    this.#log("Emplacing files and cleaning up");
-    const valid = this.#emplaceDocs();
-    this.#writeState();
-    this.#cleanup(valid);
+    // this.#log("Emplacing files and cleaning up");
+    // const valid = this.#emplaceDocs();
+    // this.#writeState();
+    // this.#cleanup(valid);
   }
 }
