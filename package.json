@@ -13,11 +13,14 @@
     "@types/bun": "latest"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@eslint/js": "^9.20.0",
     "commander": "^13.1.0",
     "dropbox": "^10.34.0",
-    "open": "^10.1.0"
+    "eslint": "^9.20.1",
+    "open": "^10.1.0",
+    "typescript-eslint": "^8.24.1"
   }
 }
