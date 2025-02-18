@@ -33,7 +33,7 @@ export default class Exporter {
   #outputState: State;
   #limiter: Limiter;
 
-  #list?: files.ListFolderResult;
+  #cursor?: string;
 
   static async create(opts: ExporterOptions): Promise<Exporter> {
     const inputState = Exporter.#readState(opts.output);
@@ -85,20 +85,22 @@ export default class Exporter {
 
   async * #listPaperDocs(): AsyncGenerator<files.FileMetadataReference> {
     this.#log('Starting list...');
-    this.#list = await this.#limiter.runHi(() =>
+    let list = await this.#limiter.runHi(() =>
       this.#dbx.filesListFolder({ path: "", recursive: true, limit: 1000 }));
+    this.#cursor = list.cursor;
     while (true) {
-      for (let entry of this.#list.entries) {
+      for (let entry of list.entries) {
         if (Exporter.looksLikePaper(entry)) {
           yield (entry as files.FileMetadataReference);
         }
       }
 
-      if (!this.#list.has_more) {
+      if (!list.has_more) {
         break;
       }
-      this.#list = await this.#limiter.runHi(() =>
-        this.#dbx.filesListFolderContinue({ cursor: this.#list!.cursor }));
+      list = await this.#limiter.runHi(() =>
+        this.#dbx.filesListFolderContinue({ cursor: this.#cursor! }));
+      this.#cursor = list.cursor;
     }
   }
 
@@ -145,7 +147,7 @@ export default class Exporter {
   }
 
   #writeState() {
-    this.#outputState.cursor = this.#list?.cursor;
+    this.#outputState.cursor = this.#cursor;
     let stateFile = path.resolve(this.#output, 'state.json');
     fs.mkdirSync(this.#output, { recursive: true });
     fs.writeFileSync(stateFile, JSON.stringify(this.#outputState, null, 2));
