@@ -21,6 +21,19 @@
       "type": "bun",
       "internalConsoleOptions": "neverOpen",
       "request": "launch",
+      "name": "Debug index",
+      "program": "${workspaceFolder}/src/index.ts",
+      "cwd": "${workspaceFolder}",
+      "stopOnEntry": false,
+      "watchMode": false,
+      "args": [
+        "../paper"
+      ],
+    },
+    {
+      "type": "bun",
+      "internalConsoleOptions": "neverOpen",
+      "request": "launch",
       "name": "Debug Test",
       "program": "${file}",
       "cwd": "${workspaceFolder}",

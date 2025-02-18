@@ -73,6 +73,7 @@ export default class Limiter {
     if (this.#completeResolve) {
       this.#completeResolve!();
     }
+    // Ensure future waits don't immediately resolve
     this.#complete = new Promise<void>((resolve) => {
       this.#completeResolve = resolve;
     });

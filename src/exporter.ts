@@ -111,8 +111,6 @@ export default class Exporter {
     for (const [format, ext] of Object.entries(formats)) {
       this.#limiter.run(async () => {
         const response = await this.#dbx.filesExport({ path: doc.id, export_format: format });
-        // TODO: is this ok, limit-wise? how do errors show up?
-
         this.#log("Exporting", relative, "as", format);
 
         const contents = response.result.fileBinary.toString();
