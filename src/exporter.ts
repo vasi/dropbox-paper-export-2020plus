@@ -149,7 +149,7 @@ export default class Exporter {
       return false;
     }
 
-    const file = path.join(this.#tmp, doc.id + '.' + ext);
+    const file = path.join(this.#output, have.path + '.' + ext);
     if (!fs.existsSync(file)) {
       return false;
     }

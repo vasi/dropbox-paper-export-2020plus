@@ -27,7 +27,8 @@
       "stopOnEntry": false,
       "watchMode": false,
       "args": [
-        "../paper"
+        "../paper",
+        "--formats=md"
       ],
     },
     {
