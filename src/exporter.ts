@@ -137,20 +137,51 @@ export default class Exporter {
     this.#outputState.docs[doc.id] = docState;
 
     for (let ext of this.#formats) {
-      const format = Formats[ext];
-      this.#limiter.run(async () => {
-        const response = await this.#dbx.filesExport({ path: doc.id, export_format: format });
-        this.#log("Exporting", relative, "as", format);
-
-        const contents = response.result.fileBinary.toString();
-        const hash = Exporter.#hash(contents);
-        docState.hashes[format] = hash;
-
-        const file = path.join(this.#tmp, doc.id + '.' + ext);
-        fs.writeFileSync(file, response.result.fileBinary);
-        return response;
-      });
+      const out = path.join(this.#tmp, doc.id + '.' + ext);
+      this.#exportTo(doc, docState, ext, out);
     }
+  }
+
+  // Return true if we did use an existing file
+  #tryExistingFile(doc: files.FileMetadataReference, docState: DocState, ext: string, out: string): boolean {
+    const have = this.#inputState.docs[doc.id];
+    if (!have || have.rev !== doc.rev) {
+      return false;
+    }
+
+    const file = path.join(this.#tmp, doc.id + '.' + ext);
+    if (!fs.existsSync(file)) {
+      return false;
+    }
+
+    const contents = fs.readFileSync(file).toString();
+    const hash = Exporter.#hash(contents);
+    if (have.hashes[ext] !== hash) {
+      return false;
+    }
+
+    docState.hashes[ext] = hash;
+    fs.copyFileSync(file, out);
+    return true;
+  }
+
+  #exportTo(doc: files.FileMetadataReference, docState: DocState, ext: string, out: string) {
+    // Maybe we already have the file?
+    if (this.#tryExistingFile(doc, docState, ext, out)) {
+      return;
+    }
+
+    const format = Formats[ext];
+    this.#limiter.run(async () => {
+      const response = await this.#dbx.filesExport({ path: doc.id, export_format: format });
+      this.#log("Exporting", docState.path, "as", format);
+
+      const contents = response.result.fileBinary.toString();
+      const hash = Exporter.#hash(contents);
+      docState.hashes[ext] = hash;
+      fs.writeFileSync(out, response.result.fileBinary);
+      return response;
+    });
   }
 
   // Return valid paths
