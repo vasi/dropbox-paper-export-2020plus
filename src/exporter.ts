@@ -93,7 +93,7 @@ export default class Exporter {
     }
   }
 
-  async * #listPaperDocs(): AsyncGenerator<files.FileMetadataReference> {
+  async #listAndDispatch() {
     this.#log('Starting list...');
     let list = await this.#limiter.runHi(() =>
       this.#dbx.filesListFolder({ path: "", recursive: true, limit: 1000 }));
@@ -101,7 +101,7 @@ export default class Exporter {
     while (true) {
       for (let entry of list.entries) {
         if (Exporter.looksLikePaper(entry)) {
-          yield (entry as files.FileMetadataReference);
+          this.#exportDoc(entry as files.FileMetadataReference);
         }
       }
 
@@ -199,9 +199,7 @@ export default class Exporter {
   }
 
   async run() {
-    for await (let doc of this.#listPaperDocs()) {
-      this.#exportDoc(doc);
-    }
+    await this.#listAndDispatch();
     await this.#limiter.wait();
     this.#log("Emplacing files and cleaning up");
     const valid = this.#emplaceDocs();
