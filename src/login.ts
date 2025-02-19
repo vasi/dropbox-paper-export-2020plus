@@ -39,6 +39,8 @@ async function login(dbx: Dropbox, port?: number) {
   });
 
   open(authUrl.toString());
+  console.log("Tried to open an authentication URL in your browser. If it didn't work, please open it manually:");
+  console.log(authUrl.toString());
   const newRefreshToken = await ready;
   dbx.auth.setRefreshToken(newRefreshToken);
 }
