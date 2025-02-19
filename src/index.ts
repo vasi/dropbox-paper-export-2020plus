@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import Exporter from './exporter';
 import { defaultRedirectPort } from './login';
 
-function commaSeparatedList(value: string, _: string[]): string[] {
+function commaSeparatedList(value: string, _previous: string[]): string[] {
   return value.split(',');
 }
 

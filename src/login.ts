@@ -1,4 +1,4 @@
-import { Dropbox, DropboxAuth, type DropboxAuthOptions } from "dropbox";
+import { Dropbox, DropboxAuth, type DropboxAuthOptions, type users } from "dropbox";
 import crypto from 'crypto';
 import http from 'http';
 import open from 'open';
@@ -30,7 +30,7 @@ async function login(dbx: Dropbox, port?: number) {
         const token = await dbx.auth.getAccessTokenFromCode(redirectUri, code);
         res.end("Authenticated, you can close this tab now");
         server.close();
-        resolve((token.result as any).refresh_token);
+        resolve(token.result.refresh_token);
       } catch (e) {
         reject(e);
       }
@@ -46,9 +46,10 @@ async function login(dbx: Dropbox, port?: number) {
 async function checkPaperSupport(dbx: Dropbox) {
   await dbx.checkUser({});
 
-  const features = await dbx.rpcRequest("users/features/get_values",
+  const features = await dbx.rpcRequest<users.UserFeaturesGetValuesBatchResult>("users/features/get_values",
     { features: ["paper_as_files"] }, 'user', 'api');
-  if (!features.result.values[0].paper_as_files.enabled) {
+  const feature = features.result.values[0] as users.UserFeatureValuePaperAsFiles;
+  if (feature.paper_as_files[".tag"] !== "enabled") {
     console.error("Paper as files feature is not enabled for this user");
     process.exit(1);
   }

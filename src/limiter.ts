@@ -1,10 +1,11 @@
 import { DropboxResponseError, type DropboxResponse } from "dropbox";
-import Timeout = NodeJS.Timeout;
 
 type Thunk<T> = () => Promise<DropboxResponse<T>>;
+type QueueEntry = () => void;
+type QueueAdder = (entry: QueueEntry) => void;
 
 export default class Limiter {
-  #queue: (() => void)[] = [];
+  #queue: QueueEntry[] = [];
   #timer?: Timer;
   #inflight: number = 0;
 
@@ -84,7 +85,7 @@ export default class Limiter {
     this.#completeIsResolved = true;
   }
 
-  async #doRun<T>(f: Thunk<T>, addFn: (_: any) => void): Promise<T> {
+  async #doRun<T>(f: Thunk<T>, addFn: QueueAdder): Promise<T> {
     this.#setupNotification();
     const p = new Promise<T>((resolve, reject) => {
       const doRun = async () => {
