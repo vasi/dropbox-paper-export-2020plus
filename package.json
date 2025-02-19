@@ -7,10 +7,11 @@
   "author": "Dave Vasilevsky <dave@vasilevsky.ca>",
   "scripts": {
     "run": "bun src/index.js -v ../paper",
-    "check": "tsc --noEmit",
+    "check": "tsc",
     "test": "bun test tests",
     "lint": "bun eslint",
-    "build": "bun build --target=node ./src/index.ts --outfile=dist/index.js"
+    "build:bun": "bun build --target=node ./src/index.ts --outfile=dist/index.js",
+    "build": "tsc -p ./tsconfig.build.json"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -31,9 +32,9 @@
     "proper-lockfile": "^4.1.2"
   },
   "files": [
-    "dist/*.js",
-    "dist/*.d.ts"
+    "dist/*.js"
   ],
+  "main": "dist/index.js",
   "bin": {
     "dropbox-paper-export": "./dist/index.js"
   }

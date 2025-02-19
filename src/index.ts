@@ -1,8 +1,8 @@
 #! /usr/bin/env node
 
 import { Command } from 'commander';
-import Exporter from './exporter';
-import { defaultRedirectPort } from './login';
+import Exporter from './exporter.js';
+import { defaultRedirectPort } from './login.js';
 
 function commaSeparatedList(value: string, _previous: string[]): string[] {
   return value.split(',');

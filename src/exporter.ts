@@ -6,9 +6,9 @@ import lockfile from 'proper-lockfile';
 
 import { Dropbox, type files } from 'dropbox';
 
-import getDropbox from './login';
-import Limiter from './limiter';
-import type State from './state';
+import getDropbox from './login.js';
+import Limiter from './limiter.js';
+import type State from './state.js';
 
 const Formats: Record<string, string> = {
   "md": "markdown",
