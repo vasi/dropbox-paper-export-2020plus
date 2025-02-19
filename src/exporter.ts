@@ -242,7 +242,8 @@ export default class Exporter {
       if (idVal.status !== ValidationStatus.Unvalidated)
         return; // already handled by someone else
 
-      if (idVal.rev == pathVal.rev && idVal.full_path) { // maybe we already have it?
+      if (idVal.rev == pathVal.rev && idVal.full_path && fs.existsSync(idVal.full_path)) {
+        // maybe we already have it?
         const actualHash = Exporter.#hash(fs.readFileSync(idVal.full_path).toString());
         if (actualHash == idVal.hash) {
           idVal.status = ValidationStatus.Validated;
