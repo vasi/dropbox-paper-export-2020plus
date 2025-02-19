@@ -1,6 +1,6 @@
 {
   "name": "dropbox-paper-export-2020plus",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "module": "src/index.ts",
   "type": "module",
   "license": " BSD-2-Clause",

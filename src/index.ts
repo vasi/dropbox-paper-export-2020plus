@@ -10,7 +10,7 @@ function commaSeparatedList(value: string, _previous: string[]): string[] {
 
 const program = new Command();
 program
-  .version('1.0.0')
+  .version('1.0.1')
   .description('Export Dropbox Paper 2020+ documents')
   .option('-v, --verbose', 'Verbose output')
   .option('--formats <string>', 'Formats to export, comma separated', commaSeparatedList, ["md", "html"])
