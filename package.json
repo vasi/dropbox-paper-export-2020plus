@@ -37,6 +37,6 @@
   ],
   "main": "dist/index.js",
   "bin": {
-    "dropbox-paper-export": "./dist/index.js"
+    "dropbox-paper-export": "dist/index.js"
   }
 }
