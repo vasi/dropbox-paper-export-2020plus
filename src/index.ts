@@ -11,12 +11,12 @@ program
   .version('1.0.0')
   .description('Export Dropbox Paper 2020+ documents')
   .option('-v, --verbose', 'Verbose output')
-  .option('--client-id <string>', 'Client ID for authorization')
-  .option('--redirect-port <number>', 'Redirect port for authorization',
-    defaultRedirectPort.toString())
   .option('--formats <string>', 'Formats to export', commaSeparatedList, ["md", "html"])
   .option('--directory <string>', 'Directory in Dropbox to export')
   .option('--fresh', 'Restart export from scratch')
+  .option('--client-id <string>', 'Client ID for authorization')
+  .option('--redirect-port <number>', 'Redirect port for authorization',
+    defaultRedirectPort.toString())
   .arguments('<output>')
   .action(async (output, options) => {
     try {
