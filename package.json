@@ -11,7 +11,8 @@
     "test": "bun test tests",
     "lint": "bun eslint",
     "build:bun": "bun build --target=node ./src/index.ts --outfile=dist/index.js",
-    "build": "tsc -p ./tsconfig.build.json"
+    "build": "tsc -p ./tsconfig.build.json",
+    "prepack": "tsc -p ./tsconfig.build.json"
   },
   "devDependencies": {
     "@types/bun": "latest",
