@@ -147,8 +147,18 @@ export default class Exporter {
     }
   }
 
+  static #removePrefix(str: string, prefix: string): string {
+    if (str.startsWith(prefix)) {
+      return str.slice(prefix.length);
+    }
+    return str;
+  }
+
   #output_for(fpath: string, ext: string): string {
     fpath = Exporter.#relative(fpath);
+    if (this.#directory) {
+      fpath = Exporter.#removePrefix(fpath, this.#directory + '/');
+    }
     return path.join(this.#output, `${fpath}.${ext}`);
   }
 
@@ -338,7 +348,7 @@ export default class Exporter {
     // Figure out what to keep
     for (const rpath of this.#pathMap.keys()) {
       for (const ext of this.#formats) {
-        let fpath = `${rpath}.${ext}`;
+        let fpath = Exporter.#removePrefix(`${rpath}.${ext}`, this.#directory + '/');
         while (fpath != '.') {
           toKeep.add(fpath);
           fpath = path.dirname(fpath);
