@@ -15,8 +15,8 @@
     "check": "tsc",
     "test": "bun test tests",
     "lint": "bun eslint",
-    "build:bun": "bun build --target=node ./src/index.ts --outfile=dist/index.js",
-    "build": "tsc -p ./tsconfig.build.json",
+    "build": "bun build --target=node ./src/index.ts --outfile=dist/index.js",
+    "build:tsc": "tsc -p ./tsconfig.build.json",
     "prepack": "tsc -p ./tsconfig.build.json"
   },
   "devDependencies": {
@@ -36,6 +36,9 @@
     "lodash": "^4.17.21",
     "open": "^10.1.0",
     "proper-lockfile": "^4.1.2"
+  },
+  "overrides": {
+    "whatwg-url": "14.0.0 "
   },
   "files": [
     "dist/*.js"
