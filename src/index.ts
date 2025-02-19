@@ -15,6 +15,8 @@ program
   .option('--redirect-port <number>', 'Redirect port for authorization',
     defaultRedirectPort.toString())
   .option('--formats <string>', 'Formats to export', commaSeparatedList, ["md", "html"])
+  .option('--directory <string>', 'Directory in Dropbox to export')
+  .option('--fresh', 'Restart export from scratch')
   .arguments('<output>')
   .action(async (output, options) => {
     const exporter = await Exporter.create({ output, ...options });

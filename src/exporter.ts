@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
+import _ from 'lodash';
 
 import { Dropbox, type files } from 'dropbox';
 
@@ -21,6 +22,8 @@ interface ExporterOptions {
   clientId?: string;
   redirectPort?: number;
   formats?: string[],
+  directory?: string,
+  fresh?: boolean,
 }
 
 enum ValidationStatus {
@@ -48,6 +51,8 @@ export default class Exporter {
   #dbx: Dropbox;
   #output: string;
   #verbose: boolean = false;
+
+  #directory: string;
   #formats: string[];
 
   #pathMap: Map<string, PathValue> = new Map(); // keyed by relative path
@@ -92,13 +97,35 @@ export default class Exporter {
     return `${id}.${ext}`;
   }
 
-  private constructor(dbx: Dropbox, inputState: State, opts: ExporterOptions) {
-    // Validate formats
-    this.#formats = opts.formats ?? Object.keys(Formats);
-    for (const format of this.#formats) {
+  static #validateFormats(formats: string[]): void {
+    for (const format of formats) {
       if (!(format in Formats)) {
         throw new Error(`Unknown format: ${format}`);
       }
+    }
+  }
+
+  #validateArgs(state: State, opts: ExporterOptions): void {
+    if (!opts.fresh && state.args) {
+      if (opts.formats && !_.isEqual(opts.formats, state.args.formats))
+        throw new Error("Cannot change formats after initial run");
+      this.#formats = state.args.formats;
+      if (opts.directory && opts.directory !== state.args.directory)
+        throw new Error("Cannot change directory after initial run");
+      this.#directory = state.args.directory;
+    }
+
+    this.#formats = opts.formats ?? Object.keys(Formats);
+    this.#directory = opts.directory ?? "";
+    Exporter.#validateFormats(this.#formats);
+  }
+
+  private constructor(dbx: Dropbox, inputState: State, opts: ExporterOptions) {
+    this.#validateArgs(inputState, opts);
+    if (opts.fresh) {
+      inputState = { docs: {} };
+    } else {
+      this.#cursor = inputState.cursor;
     }
 
     this.#dbx = dbx;
@@ -111,7 +138,6 @@ export default class Exporter {
     fs.rmSync(this.#tmpdir, { force: true, recursive: true });
     fs.mkdirSync(this.#tmpdir, { recursive: true });
 
-    this.#cursor = inputState.cursor;
     this.#stageInitialize(inputState);
   }
 
@@ -153,8 +179,9 @@ export default class Exporter {
       return await this.#limiter.runHi(() =>
         this.#dbx.filesListFolderContinue({ cursor: this.#cursor! }));
     } else {
+      const path = this.#directory ? `/${this.#directory}` : "";
       return await this.#limiter.runHi(() =>
-        this.#dbx.filesListFolder({ path: "", recursive: true, limit: 1000 }));
+        this.#dbx.filesListFolder({ path: path, recursive: true, limit: 1000 }));
     }
   }
 
@@ -249,6 +276,10 @@ export default class Exporter {
       refreshToken: this.#dbx.auth.getRefreshToken(),
       cursor: this.#cursor,
       docs: {},
+      args: {
+        formats: this.#formats,
+        directory: this.#directory,
+      }
     };
     for (const [path, pathVal] of this.#pathMap) {
       for (const ext of this.#formats) {
