@@ -6,7 +6,7 @@ import { Dropbox, type files } from 'dropbox';
 
 import getDropbox from './login';
 import Limiter from './limiter';
-import { type DocState, type State } from './state';
+import type State from './state';
 
 const Formats: Record<string, string> = {
   "md": "markdown",
@@ -23,6 +23,24 @@ interface ExporterOptions {
   formats?: string[],
 }
 
+enum ValidationStatus {
+  Unvalidated,
+  InProgress,
+  Validated,
+}
+
+interface IDValue {
+  rev: string,
+  hash?: string,
+  full_path?: string,
+  status: ValidationStatus,
+}
+
+interface PathValue {
+  id: string,
+  rev: string,
+}
+
 const tempName = '.tmp';
 const stateName = "state.json";
 
@@ -30,26 +48,15 @@ export default class Exporter {
   #dbx: Dropbox;
   #output: string;
   #verbose: boolean = false;
-  #formats: string[] = Object.keys(Formats);
+  #formats: string[];
 
-  #inputState: State;
-  #pathMap: Map<string, string> = new Map(); // relative path to id
-  #outputState: State;
+  #pathMap: Map<string, PathValue> = new Map(); // keyed by relative path
+  #idMap: Map<string, IDValue> = new Map();
+
   #limiter: Limiter;
   #tmpdir: string;
   #stateFile: string;
-
   #cursor?: string;
-
-  static async create(opts: ExporterOptions): Promise<Exporter> {
-    const inputState = Exporter.#readState(opts.output);
-    const dbx = await getDropbox({
-      refreshToken: inputState.refreshToken,
-      clientId: opts.clientId,
-      redirectPort: opts.redirectPort,
-    });
-    return Promise.resolve(new Exporter(dbx, inputState, opts));
-  }
 
   static #readState(output: string): State {
     const file = path.join(output, stateName);
@@ -60,6 +67,19 @@ export default class Exporter {
     }
   }
 
+  static async create(opts: ExporterOptions): Promise<Exporter> {
+    if (opts.verbose) {
+      console.log("Reading state...");
+    }
+    const inputState = Exporter.#readState(opts.output);
+    const dbx = await getDropbox({
+      refreshToken: inputState.refreshToken,
+      clientId: opts.clientId,
+      redirectPort: opts.redirectPort,
+    });
+    return Promise.resolve(new Exporter(dbx, inputState, opts));
+  }
+
   static #hash(data: string): string {
     return crypto.createHash('sha3-512').update(data).digest('base64');
   }
@@ -68,51 +88,63 @@ export default class Exporter {
     return path.replace(/^\//g, '');
   }
 
+  static #idMapKey(id: string, ext: string): string {
+    return `${id}.${ext}`;
+  }
+
   private constructor(dbx: Dropbox, inputState: State, opts: ExporterOptions) {
-    this.#dbx = dbx;
-    this.#inputState = inputState;
-
-    this.#output = opts.output;
-    this.#verbose = opts.verbose || false;
-
     // Validate formats
     this.#formats = opts.formats ?? Object.keys(Formats);
-    for (let format of this.#formats) {
+    for (const format of this.#formats) {
       if (!(format in Formats)) {
         throw new Error(`Unknown format: ${format}`);
       }
     }
 
+    this.#dbx = dbx;
+    this.#output = opts.output;
+    this.#verbose = opts.verbose || false;
     this.#limiter = new Limiter();
+    this.#stateFile = path.join(this.#output, stateName);
+
     this.#tmpdir = path.join(this.#output, tempName);
     fs.rmSync(this.#tmpdir, { force: true, recursive: true });
     fs.mkdirSync(this.#tmpdir, { recursive: true });
-    this.#stateFile = path.join(this.#output, stateName);
 
-    if (this.#inputState.cursor) {
-      this.#cursor = this.#inputState.cursor;
-      this.#outputState = this.#inputState;
-      this.#setupInitialIds();
-    } else {
-      this.#outputState = { refreshToken: dbx.auth.getRefreshToken(), docs: {} };
-    }
-
-    for (let [id, docState] of Object.entries(this.#inputState.docs)) {
-      this.#pathMap.set(docState.path, id);
-    }
+    this.#cursor = inputState.cursor;
+    this.#stageInitialize(inputState);
   }
 
-  #setupInitialIds() {
-    for (let [id, docState] of Object.entries(this.#inputState.docs)) {
-      for (let ext of this.#formats) {
-        this.#tryExistingFile(id, docState.rev, ext);
-      }
-    }
-  }
-
-  #log(...params: any[]) {
+  #log(...params: unknown[]) {
     if (this.#verbose) {
       console.log(...params);
+    }
+  }
+
+  #output_for(fpath: string, ext: string): string {
+    fpath = Exporter.#relative(fpath);
+    return path.join(this.#output, `${fpath}.${ext}`);
+  }
+
+  #tmp_for(id: string, ext: string): string {
+    return path.join(this.#tmpdir, `${id}.${ext}`);
+  }
+
+  #stageInitialize(inputState: State) {
+    for (const [id, docState] of Object.entries(inputState.docs ?? {})) {
+      if (this.#cursor) { // if no cursor, we start with empty state
+        this.#pathMap.set(docState.path, { id, rev: docState.rev });
+      }
+      for (const ext of this.#formats) {
+        const key = Exporter.#idMapKey(id, ext);
+        const full_path = this.#output_for(docState.path, ext);
+        this.#idMap.set(key, {
+          rev: docState.rev,
+          hash: docState.hashes[ext],
+          full_path,
+          status: ValidationStatus.Unvalidated,
+        })
+      }
     }
   }
 
@@ -123,29 +155,6 @@ export default class Exporter {
     } else {
       return await this.#limiter.runHi(() =>
         this.#dbx.filesListFolder({ path: "", recursive: true, limit: 1000 }));
-    }
-  }
-
-  async #listAndDispatch() {
-    this.#log('Starting list...');
-    let list = await this.#initialList();
-    this.#cursor = list.cursor;
-    while (true) {
-      for (let entry of list.entries) {
-        console.dir(entry);
-        if (Exporter.looksLikePaper(entry)) {
-          // this.#exportDoc(entry as files.FileMetadataReference);
-        } else if (entry['.tag'] == 'deleted') {
-          // this.#processDelete(entry as files.DeletedMetadataReference);
-        }
-      }
-
-      if (!list.has_more) {
-        break;
-      }
-      list = await this.#limiter.runHi(() =>
-        this.#dbx.filesListFolderContinue({ cursor: this.#cursor! }));
-      this.#cursor = list.cursor;
     }
   }
 
@@ -166,122 +175,161 @@ export default class Exporter {
     return true;
   }
 
-  #processDelete(doc: files.DeletedMetadataReference) {
-    const relative = Exporter.#relative(doc.path_display!);
-    const id = this.#pathMap.get(relative);
-    if (id) {
-      delete this.#outputState.docs[id];
+  async #stageList() {
+    let list = await this.#initialList();
+    this.#cursor = list.cursor;
+    while (true) {
+      for (const entry of list.entries) {
+        const fpath = Exporter.#relative(entry.path_display!);
+        if (Exporter.looksLikePaper(entry)) {
+          const doc = entry as files.FileMetadataReference;
+          this.#pathMap.set(fpath, { id: doc.id, rev: doc.rev })
+        } else if (entry['.tag'] == 'deleted') {
+          this.#pathMap.delete(fpath);
+        }
+      }
+
+      if (!list.has_more) {
+        break;
+      }
+      list = await this.#limiter.runHi(() =>
+        this.#dbx.filesListFolderContinue({ cursor: this.#cursor! }));
+      this.#cursor = list.cursor;
     }
   }
 
-  #exportDoc(doc: files.FileMetadataReference) {
-    const relative: string = Exporter.#relative(doc.path_display!);
-    const docState: DocState = { path: relative, rev: doc.rev, hashes: {} };
-    this.#outputState.docs[doc.id] = docState;
+  #fetchIfNeeded(path: string, pathVal: PathValue, ext: string) {
+    const idKey = Exporter.#idMapKey(pathVal.id, ext);
+    let idVal = this.#idMap.get(idKey);
+    if (idVal) {
+      if (idVal.status !== ValidationStatus.Unvalidated)
+        return; // already handled by someone else
 
-    for (let ext of this.#formats) {
-      this.#exportTo(doc, docState, ext);
-    }
-  }
-
-  // Return true if we did use an existing file
-  #tryExistingFile(id: string, rev: string, ext: string, outDocState?: DocState): boolean {
-    const have = this.#inputState.docs[id];
-    if (!have || have.rev !== rev) {
-      return false;
-    }
-
-    const file = path.join(this.#output, have.path + '.' + ext);
-    if (!fs.existsSync(file)) {
-      return false;
+      if (idVal.rev == pathVal.rev && idVal.full_path) { // maybe we already have it?
+        const actualHash = Exporter.#hash(fs.readFileSync(idVal.full_path).toString());
+        if (actualHash == idVal.hash) {
+          idVal.status = ValidationStatus.Validated;
+          return;
+        }
+      }
+      idVal.status = ValidationStatus.InProgress;
     }
 
-    const contents = fs.readFileSync(file).toString();
-    const hash = Exporter.#hash(contents);
-    if (have.hashes[ext] !== hash) {
-      return false;
-    }
+    idVal = { rev: pathVal.rev, status: ValidationStatus.InProgress };
+    this.#idMap.set(idKey, idVal);
 
-    if (outDocState) {
-      outDocState.hashes[ext] = hash;
-    }
-    const out = path.join(this.#tmpdir, id + '.' + ext);
-    fs.copyFileSync(file, out);
-    return true;
-  }
-
-  #exportTo(doc: files.FileMetadataReference, outDocState: DocState, ext: string) {
-    // Maybe we already have the file?
-    if (this.#tryExistingFile(doc.id, doc.rev, ext, outDocState)) {
-      return;
-    }
-
-    const format = Formats[ext];
+    const api_format = Formats[ext];
     this.#limiter.run(async () => {
-      const response = await this.#dbx.filesExport({ path: doc.id, export_format: format });
-      this.#log("Exporting", outDocState.path, "as", format);
+      const response = await this.#dbx.filesExport({ path: pathVal.id, export_format: api_format });
+      this.#log("Exporting", path, "as", ext);
 
       const contents = response.result.fileBinary.toString();
-      const hash = Exporter.#hash(contents);
-
-      outDocState.hashes[ext] = hash;
-      const out = path.join(this.#tmpdir, doc.id + '.' + ext);
+      const out = this.#tmp_for(pathVal.id, ext);
       fs.writeFileSync(out, response.result.fileBinary);
+
+      idVal.hash = Exporter.#hash(contents);
+      idVal.status = ValidationStatus.Validated;
+      idVal.full_path = out;
+
       return response;
     });
   }
 
-  // Return valid paths
-  #emplaceDocs(): Set<string> {
-    const validDocs = new Set<string>();
-    validDocs.add(stateName);
-
-    for (let [id, doc] of Object.entries(this.#outputState.docs)) {
-      for (let ext of this.#formats) {
-        const source = path.join(this.#tmpdir, id + '.' + ext);
-        const file = doc.path + '.' + ext;
-
-        // Add doc and all parents as valid paths
-        validDocs.add(file);
-        let valid = file;
-        while (true) {
-          valid = path.dirname(valid);
-          if (valid === '.')
-            break;
-          validDocs.add(valid);
-        }
-
-        const dest = path.join(this.#output, file);
-        const destDir = path.dirname(dest);
-        fs.mkdirSync(destDir, { recursive: true });
-        fs.copyFileSync(source, dest);
+  async #stageFetch() {
+    for (const [path, pathVal] of this.#pathMap) {
+      for (const ext of this.#formats) {
+        this.#fetchIfNeeded(path, pathVal, ext);
       }
     }
-    return validDocs;
+    await this.#limiter.wait();
   }
 
-  #cleanup(valid: Set<string>) {
+  #writeStateFile() {
+    const state: State = {
+      refreshToken: this.#dbx.auth.getRefreshToken(),
+      cursor: this.#cursor,
+      docs: {},
+    };
+    for (const [path, pathVal] of this.#pathMap) {
+      for (const ext of this.#formats) {
+        const idKey = Exporter.#idMapKey(pathVal.id, ext);
+        const idVal = this.#idMap.get(idKey)!;
+
+        const stateVal = state.docs[pathVal.id] ??= { rev: pathVal.rev, path: path, hashes: {} };
+        stateVal.hashes[ext] = idVal.hash!;
+      }
+    }
+
+    fs.writeFileSync(this.#stateFile, JSON.stringify(state, null, 2));
+  }
+
+  #stageEmplace() {
+    // Check which paths are correct and don't need to be moved
+    const correctPaths = new Set<string>();
+    for (const [path, pathVal] of this.#pathMap) {
+      for (const ext of this.#formats) {
+        const idKey = Exporter.#idMapKey(pathVal.id, ext);
+        const idVal = this.#idMap.get(idKey)!;
+        if (idVal.full_path === this.#output_for(path, ext)) {
+          correctPaths.add(idKey);
+        } else if (idVal.full_path!.startsWith(this.#tmpdir)) {
+          // Don't need to copy, but also not correct final path
+        } else {
+          // Make sure it's safe from being overwritten
+          const tmp = this.#tmp_for(pathVal.id, ext);
+          fs.copyFileSync(idVal.full_path!, tmp);
+          idVal.full_path = tmp;
+        }
+      }
+    }
+
+    // Emplace other paths
+    for (const [fpath, pathVal] of this.#pathMap) {
+      for (const ext of this.#formats) {
+        const idKey = Exporter.#idMapKey(pathVal.id, ext);
+        if (correctPaths.has(idKey))
+          continue;
+
+        const idVal = this.#idMap.get(idKey)!;
+        const out = this.#output_for(fpath, ext);
+        fs.mkdirSync(path.dirname(out), { recursive: true });
+        fs.copyFileSync(idVal.full_path!, out);
+      }
+    }
+
+    this.#writeStateFile();
+  }
+
+  #stageCleanup() {
+    const toKeep = new Set<string>();
+    toKeep.add(stateName);
+
+    // Figure out what to keep
+    for (const rpath of this.#pathMap.keys()) {
+      for (const ext of this.#formats) {
+        let fpath = `${rpath}.${ext}`;
+        while (fpath != '.') {
+          toKeep.add(fpath);
+          fpath = path.dirname(fpath);
+        }
+      }
+    }
+
     const files = fs.readdirSync(this.#output, { recursive: true }) as string[];
-    for (let file of files) {
-      if (!valid.has(file)) {
+    for (const file of files) {
+      if (!toKeep.has(file)) {
         const abs = path.join(this.#output, file);
         fs.rmSync(abs, { force: true, recursive: true });
       }
     }
   }
 
-  #writeState() {
-    this.#outputState.cursor = this.#cursor;
-    fs.mkdirSync(this.#output, { recursive: true });
-    fs.writeFileSync(this.#stateFile, JSON.stringify(this.#outputState, null, 2));
-  }
-
   async run() {
-    await this.#listAndDispatch();
-    await this.#limiter.wait();
-    // this.#log("Emplacing files and cleaning up");
-    // const valid = this.#emplaceDocs();
-    // this.#writeState();
-    // this.#cleanup(valid);
+    this.#log("Listing files...");
+    await this.#stageList();
+    await this.#stageFetch();
+    this.#log("Emplacing files and cleaning up");
+    this.#stageEmplace();
+    this.#stageCleanup();
   }
 }

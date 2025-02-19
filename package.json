@@ -7,7 +7,8 @@
   "scripts": {
     "run": "bun src/index.js -v ../paper",
     "check": "tsc --noEmit",
-    "test": "bun test tests"
+    "test": "bun test tests",
+    "lint": "bun eslint"
   },
   "devDependencies": {
     "@types/bun": "latest"
