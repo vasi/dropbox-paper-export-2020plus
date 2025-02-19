@@ -2,6 +2,8 @@
 
 ## A command-line tool to export your Dropbox Paper docs
 
+[![npm](https://img.shields.io/npm/v/dropbox-paper-export-2020plus.svg)](https://www.npmjs.com/package/dropbox-paper-export-2020plus)
+
 [Dropbox Paper](https://www.dropbox.com/paper/start) is a great tool for collaborative document editing. Thanks, Dropbox, for giving us such a great tool!
 
 Unfortunately, with modern versions of Dropbox Paper, there's [no way to do bulk exports of all your documents](https://help.dropbox.com/view-edit/paper-export-docs). I can't really justify using Dropbox Paper unless there's a way for me to backup my documents. So I built one!
