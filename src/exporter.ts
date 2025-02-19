@@ -91,7 +91,7 @@ export default class Exporter {
     return Promise.resolve(new Exporter(dbx, inputState, opts));
   }
 
-  static async run(opts: ExporterOptions) {
+  static async run(opts: ExporterOptions): Promise<void> {
     if (!fs.existsSync(opts.output))
       fs.mkdirSync(opts.output);
     const lockOpts = { lockfilePath: path.join(opts.output, lockName) };

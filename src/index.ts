@@ -1,3 +1,5 @@
+#! /usr/bin/env node
+
 import { Command } from 'commander';
 import Exporter from './exporter';
 import { defaultRedirectPort } from './login';
@@ -11,7 +13,7 @@ program
   .version('1.0.0')
   .description('Export Dropbox Paper 2020+ documents')
   .option('-v, --verbose', 'Verbose output')
-  .option('--formats <string>', 'Formats to export', commaSeparatedList, ["md", "html"])
+  .option('--formats <string>', 'Formats to export, comma separated', commaSeparatedList, ["md", "html"])
   .option('--directory <string>', 'Directory in Dropbox to export')
   .option('--fresh', 'Restart export from scratch')
   .option('--client-id <string>', 'Client ID for authorization')

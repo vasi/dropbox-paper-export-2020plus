@@ -1,5 +1,6 @@
 {
   "name": "dropbox-paper-export-2020plus",
+  "version": "1.0.0",
   "module": "src/index.ts",
   "type": "module",
   "license": " BSD-2-Clause",
@@ -9,24 +10,31 @@
     "check": "tsc --noEmit",
     "test": "bun test tests",
     "lint": "bun eslint",
-    "build": "tsc"
+    "build": "bun build --target=node ./src/index.ts --outfile=dist/index.js"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@eslint/js": "^9.20.0",
+    "eslint": "^9.20.1",
+    "typescript-eslint": "^8.24.1",
+    "@types/lodash": "^4.17.15",
+    "@types/proper-lockfile": "^4.1.4"
   },
   "peerDependencies": {
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@eslint/js": "^9.20.0",
-    "@types/lodash": "^4.17.15",
-    "@types/proper-lockfile": "^4.1.4",
     "commander": "^13.1.0",
     "dropbox": "^10.34.0",
-    "eslint": "^9.20.1",
     "lodash": "^4.17.21",
     "open": "^10.1.0",
-    "proper-lockfile": "^4.1.2",
-    "typescript-eslint": "^8.24.1"
+    "proper-lockfile": "^4.1.2"
+  },
+  "files": [
+    "dist/*.js",
+    "dist/*.d.ts"
+  ],
+  "bin": {
+    "dropbox-paper-export": "./dist/index.js"
   }
 }
