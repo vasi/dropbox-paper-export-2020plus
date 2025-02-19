@@ -1,10 +1,15 @@
 {
   "name": "dropbox-paper-export-2020plus",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "module": "src/index.ts",
   "type": "module",
   "license": " BSD-2-Clause",
   "author": "Dave Vasilevsky <dave@vasilevsky.ca>",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/vasi/dropbox-paper-export-2020plus.git"
+  },
+  "homepage": "https://github.com/vasi/dropbox-paper-export-2020plus",
   "scripts": {
     "run": "bun src/index.js -v ../paper",
     "check": "tsc",
