@@ -19,7 +19,10 @@ program
   .option('--fresh', 'Restart export from scratch')
   .arguments('<output>')
   .action(async (output, options) => {
-    const exporter = await Exporter.create({ output, ...options });
-    await exporter.run();
+    try {
+      await Exporter.run({ output, ...options });
+    } catch (e) {
+      console.error((e as Error).toString());
+    }
   });
 program.parse(process.argv);

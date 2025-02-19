@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import _ from 'lodash';
+import lockfile from 'proper-lockfile';
 
 import { Dropbox, type files } from 'dropbox';
 
@@ -44,16 +45,21 @@ interface PathValue {
   rev: string,
 }
 
+interface LockError {
+  code: string;
+}
+
 const tempName = '.tmp';
 const stateName = "state.json";
+const lockName = 'export.lock';
 
 export default class Exporter {
   #dbx: Dropbox;
   #output: string;
   #verbose: boolean = false;
 
-  #directory: string;
-  #formats: string[];
+  #directory?: string;
+  #formats: string[] = [];
 
   #pathMap: Map<string, PathValue> = new Map(); // keyed by relative path
   #idMap: Map<string, IDValue> = new Map();
@@ -72,7 +78,7 @@ export default class Exporter {
     }
   }
 
-  static async create(opts: ExporterOptions): Promise<Exporter> {
+  static async #create(opts: ExporterOptions): Promise<Exporter> {
     if (opts.verbose) {
       console.log("Reading state...");
     }
@@ -83,6 +89,28 @@ export default class Exporter {
       redirectPort: opts.redirectPort,
     });
     return Promise.resolve(new Exporter(dbx, inputState, opts));
+  }
+
+  static async run(opts: ExporterOptions) {
+    if (!fs.existsSync(opts.output))
+      fs.mkdirSync(opts.output);
+    const lockOpts = { lockfilePath: path.join(opts.output, lockName) };
+    let release = undefined;
+    try {
+      release = await lockfile.lock(opts.output, lockOpts);
+      const exporter = await Exporter.#create(opts);
+      await exporter.#run();
+    } catch (e) {
+      const lockError = e as LockError;
+      if (lockError.code === 'ELOCKED') {
+        throw new Error("Export is already running in this directory");
+      } else {
+        throw e;
+      }
+    } finally {
+      if (release)
+        release();
+    }
   }
 
   static #hash(data: string): string {
@@ -147,7 +175,11 @@ export default class Exporter {
     }
   }
 
-  static #removePrefix(str: string, prefix: string): string {
+  #removePrefix(str: string): string {
+    if (!this.#directory)
+      return str;
+
+    const prefix = `${this.#directory}/`;
     if (str.startsWith(prefix)) {
       return str.slice(prefix.length);
     }
@@ -155,10 +187,7 @@ export default class Exporter {
   }
 
   #output_for(fpath: string, ext: string): string {
-    fpath = Exporter.#relative(fpath);
-    if (this.#directory) {
-      fpath = Exporter.#removePrefix(fpath, this.#directory + '/');
-    }
+    fpath = this.#removePrefix(Exporter.#relative(fpath));
     return path.join(this.#output, `${fpath}.${ext}`);
   }
 
@@ -345,11 +374,12 @@ export default class Exporter {
   #stageCleanup() {
     const toKeep = new Set<string>();
     toKeep.add(stateName);
+    toKeep.add(lockName);
 
     // Figure out what to keep
     for (const rpath of this.#pathMap.keys()) {
       for (const ext of this.#formats) {
-        let fpath = Exporter.#removePrefix(`${rpath}.${ext}`, this.#directory + '/');
+        let fpath = this.#removePrefix(`${rpath}.${ext}`);
         while (fpath != '.') {
           toKeep.add(fpath);
           fpath = path.dirname(fpath);
@@ -366,7 +396,7 @@ export default class Exporter {
     }
   }
 
-  async run() {
+  async #run() {
     this.#log("Listing files...");
     await this.#stageList();
     await this.#stageFetch();

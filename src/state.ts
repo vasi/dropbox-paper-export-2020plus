@@ -6,7 +6,7 @@ interface DocState {
 
 interface Args {
   formats: string[],
-  directory: string,
+  directory?: string,
 }
 
 export default interface State {
