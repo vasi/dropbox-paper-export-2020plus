@@ -1,4 +1,5 @@
 import { DropboxResponseError, type DropboxResponse } from "dropbox";
+import { FetchError } from "node-fetch";
 
 type Thunk<T> = () => Promise<DropboxResponse<T>>;
 type QueueEntry = () => void;
@@ -105,7 +106,9 @@ export default class Limiter {
         } catch (e) {
           this.#inflight--;
 
-          if (e instanceof DropboxResponseError && e.status === 429) {
+          const isRateLimit = e instanceof DropboxResponseError && e.status === 429;
+          const isTimeout = e instanceof FetchError && e.code == "ETIMEDOUT";
+          if (isRateLimit || isTimeout) {
             // Rate limited: retry soon, but backoff
             this.#setWait(this.#wait * 2);
             this.#queue.unshift(doRun); // return to queue, at highest priority
