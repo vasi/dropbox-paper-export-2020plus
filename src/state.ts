@@ -2,6 +2,7 @@ interface DocState {
   rev: string,
   path: string, // without leading slash
   hashes: Record<string, string>, // by format, sha3-512
+  clientModified?: string,
 }
 
 interface Args {
