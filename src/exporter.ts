@@ -43,6 +43,7 @@ interface IDValue {
 interface PathValue {
   id: string,
   rev: string,
+  clientModified?: string,
 }
 
 interface LockError {
@@ -198,7 +199,11 @@ export default class Exporter {
   #stageInitialize(inputState: State) {
     for (const [id, docState] of Object.entries(inputState.docs ?? {})) {
       if (this.#cursor) { // if no cursor, we start with empty state
-        this.#pathMap.set(docState.path, { id, rev: docState.rev });
+        this.#pathMap.set(docState.path, {
+          id,
+          rev: docState.rev,
+          clientModified: docState.clientModified,
+        });
       }
       for (const ext of this.#formats) {
         const key = Exporter.#idMapKey(id, ext);
@@ -248,8 +253,12 @@ export default class Exporter {
       for (const entry of list.entries) {
         const fpath = Exporter.#relative(entry.path_display!);
         if (Exporter.looksLikePaper(entry)) {
-          const doc = entry as files.FileMetadataReference;
-          this.#pathMap.set(fpath, { id: doc.id, rev: doc.rev })
+          const doc = entry as files.FileMetadata;
+          this.#pathMap.set(fpath, {
+            id: doc.id,
+            rev: doc.rev,
+            clientModified: doc.client_modified,
+          });
         } else if (entry['.tag'] == 'deleted') {
           this.#pathMap.delete(fpath);
         }
@@ -326,7 +335,12 @@ export default class Exporter {
         const idKey = Exporter.#idMapKey(pathVal.id, ext);
         const idVal = this.#idMap.get(idKey)!;
 
-        const stateVal = state.docs[pathVal.id] ??= { rev: pathVal.rev, path: path, hashes: {} };
+        const stateVal = state.docs[pathVal.id] ??= {
+          rev: pathVal.rev,
+          path: path,
+          hashes: {},
+          clientModified: pathVal.clientModified,
+        };
         stateVal.hashes[ext] = idVal.hash!;
       }
     }
@@ -369,6 +383,19 @@ export default class Exporter {
     }
 
     this.#writeStateFile();
+
+    // Set modification dates on the emplaced output files.
+    for (const [fpath, pathVal] of this.#pathMap) {
+      if (pathVal.clientModified) {
+        const modifiedDate = new Date(pathVal.clientModified);
+        for (const ext of this.#formats) {
+          const out = this.#output_for(fpath, ext);
+          if (fs.existsSync(out)) {
+            fs.utimesSync(out, modifiedDate, modifiedDate);
+          }
+        }
+      }
+    }
   }
 
   #stageCleanup() {
